@@ -25,7 +25,7 @@ func getCPUPercent(lk g810.LedKeyboard, lkLock sync.Mutex) {
 	var cpuStatsNew [12]CpuStats
 	var keyMap [12]g810.KeyValue
 	var cpuNo int
-	var currentUsage uint8
+	var currentUsage = g810.KeyColor{0, 0, 0}
 	stat, err := os.Open("/proc/stat")
 
 	if err != nil {
@@ -60,26 +60,29 @@ func getCPUPercent(lk g810.LedKeyboard, lkLock sync.Mutex) {
 		}
 		cpuNo++
 		for n := 0; n < cpuNo; n++ {
-			currentUsage = (uint8)((cpuStatsNew[n].Idle-cpuStatsOld[n].Idle)*215/(cpuStatsNew[n].Total-cpuStatsOld[n].Total))
-			/*
-			fmt.Printf("%d: %d/%d (%d/255)\n",
-				n,
-				cpuStatsNew[n].Idle-cpuStatsOld[n].Idle,
-				cpuStatsNew[n].Total-cpuStatsOld[n].Total,
-				currentUsage,
-			)
-			*/
+			currentUsage.Green = 255-(uint8)((cpuStatsNew[n].Idle-cpuStatsOld[n].Idle)*255/(cpuStatsNew[n].Total-cpuStatsOld[n].Total))
+			if currentUsage.Green > 215 {
+				currentUsage.Red = (uint8)((currentUsage.Green-215)*(215/40))
+				currentUsage.Green = 255-currentUsage.Red
+			} else {
+				currentUsage.Red = 0
+				currentUsage.Green += 40
+			}
 			keyMap[n] = g810.KeyValue{
 				g810.KeyF1+(g810.Key)(n),
-				g810.KeyColor{0, 255-currentUsage, 0},
+				currentUsage,
 			}
 			cpuStatsOld[n].Idle = cpuStatsNew[n].Idle
 			cpuStatsOld[n].Total = cpuStatsNew[n].Total
 		}
 		//fmt.Println(keyMap[:cpuNo])
 		lkLock.Lock()
-		lk.SetKeys(keyMap[:cpuNo])
-		lk.Commit()
+		if err := lk.SetKeys(keyMap[:cpuNo]); err != nil {
+			log.Fatal(err)
+		}
+		if err := lk.Commit(); err != nil {
+			log.Fatal(err)
+		}
 		lkLock.Unlock()
 		time.Sleep(200 * time.Millisecond)
 	}
